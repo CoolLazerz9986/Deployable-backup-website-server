@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Stash usually runs on a LAN address over plain http, so cleartext must be allowed.
+     To lock the app down to https only, set this to false. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

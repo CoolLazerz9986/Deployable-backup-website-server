@@ -1,0 +1,348 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Stash Architecture</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Patrick+Hand&display=swap" rel="stylesheet">
+<style>
+/* Layout: one wide hand-drawn canvas. Left column is the system (client, server, disk) top to bottom,
+   right column is notes and planned growth. Dashed accent = not built yet. */
+:root{
+  --bg:#fbfbfd; --ink:#1d1f2a; --muted:#596074; --line:#d5d9e4;
+  --accent:#4b4be0; --accent-ink:#ffffff;
+  --z-client:#e6eefc; --z-server:#e3f4ea; --z-data:#faefd9; --z-box:#ffffff; --z-mini:#f1f3f9;
+  --hand:"Patrick Hand","Segoe Print","Bradley Hand","Comic Sans MS",cursive;
+  --ui:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#13141a; --ink:#e8e9f1; --muted:#a2a7ba; --line:#2e3140;
+    --accent:#a1a1ff; --accent-ink:#13141a;
+    --z-client:#1b2640; --z-server:#16302a; --z-data:#33291a; --z-box:#1b1d26; --z-mini:#242738;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#13141a; --ink:#e8e9f1; --muted:#a2a7ba; --line:#2e3140;
+  --accent:#a1a1ff; --accent-ink:#13141a;
+  --z-client:#1b2640; --z-server:#16302a; --z-data:#33291a; --z-box:#1b1d26; --z-mini:#242738;
+  color-scheme:dark;
+}
+body{
+  background:var(--bg); color:var(--ink); font:15px/1.5 var(--ui);
+  padding-block:28px 48px;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px));
+}
+main{max-width:1400px;margin:0 auto}
+h1{font:400 clamp(32px,5vw,46px)/1.1 var(--hand);margin:0 0 6px;letter-spacing:.01em}
+.lede{margin:0 0 20px;max-width:64ch;color:var(--muted)}
+.bar{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:center;justify-content:space-between}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{font:500 14px var(--ui);border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:7px 14px;border-radius:999px;cursor:pointer}
+.chip:hover{border-color:var(--ink)}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.chip:focus-visible,.canvas:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--muted);align-items:center}
+.sw{display:inline-block;width:26px;height:14px;border:2px solid var(--ink);border-radius:5px;vertical-align:-3px;margin-right:6px}
+.sw.d{border-style:dashed;border-color:var(--accent)}
+.note{min-height:3em;margin:14px 0 12px;max-width:82ch}
+.canvas{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:var(--bg)}
+svg{display:block;width:100%;min-width:1100px;height:auto}
+
+/* diagram strokes and text */
+.ln{fill:none;stroke:var(--ink);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ln.b{stroke-width:1.1;opacity:.5}
+.ln.fut{stroke:var(--accent);stroke-dasharray:9 7}
+.z-client{fill:var(--z-client)} .z-server{fill:var(--z-server)} .z-data{fill:var(--z-data)}
+.z-box{fill:var(--z-box)} .z-mini{fill:var(--z-mini)}
+.t{font-family:var(--hand);fill:var(--ink);font-size:17px}
+.h1{font-size:27px} .h2{font-size:23px}
+.sm{font-size:16px;fill:var(--muted)}
+.lab{font-size:15px;fill:var(--muted)}
+.zone{font-size:19px;letter-spacing:.14em;text-transform:uppercase}
+.mid{text-anchor:middle} .end{text-anchor:end}
+.futt{fill:var(--accent);font-size:20px}
+.it{transition:opacity .2s}
+.it.dim{opacity:.14}
+.it.on .ln{stroke:var(--accent)}
+@media (prefers-reduced-motion:reduce){.it{transition:none}}
+</style>
+
+<main>
+  <header>
+    <h1>Stash architecture</h1>
+    <p class="lede">Browser at the top, server in the middle, files on disk at the bottom. Clients only talk to the server's API, and only the server touches the data.</p>
+    <div class="bar">
+      <div class="chips" role="group" aria-label="Highlight a path through the system">
+        <button class="chip" type="button" data-flow="all" aria-pressed="true">Everything</button>
+        <button class="chip" type="button" data-flow="login" aria-pressed="false">Login</button>
+        <button class="chip" type="button" data-flow="upload" aria-pressed="false">Upload</button>
+        <button class="chip" type="button" data-flow="download" aria-pressed="false">Download and preview</button>
+        <button class="chip" type="button" data-flow="manage" aria-pressed="false">Rename and delete</button>
+        <button class="chip" type="button" data-flow="backup" aria-pressed="false">Phone backup</button>
+      </div>
+      <div class="legend"><span><i class="sw"></i>exists today</span><span><i class="sw d"></i>planned, not built</span></div>
+    </div>
+    <p class="note" id="note" aria-live="polite"></p>
+  </header>
+
+  <div class="canvas" tabindex="0" role="region" aria-label="Architecture diagram. Scrolls sideways on small screens.">
+    <svg id="dia" viewBox="0 0 1400 1100" role="img" aria-labelledby="dia-t dia-d">
+      <title id="dia-t">Stash architecture</title>
+      <desc id="dia-d">The browser front-end calls the server's API over HTTP. The server's router passes requests to Auth and the File service, which read and write the stash.db database, the blobs folder, a tmp folder and a secret key on disk.</desc>
+    </svg>
+  </div>
+</main>
+
+<script>
+(function () {
+  var NS = 'http://www.w3.org/2000/svg';
+  var svg = document.getElementById('dia');
+  var ALL = 'login upload download manage';
+  var BK = ALL + ' backup';  // paths that the Android backup also uses
+  var seed = 20261115;
+  function rnd() { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }
+  function jit(a) { return (rnd() - 0.5) * 2 * a; }
+  function n(v) { return v.toFixed(1); }
+
+  function el(tag, attrs, parent) {
+    var e = document.createElementNS(NS, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    (parent || svg).appendChild(e);
+    return e;
+  }
+  function grp(flows, cls, parent) {
+    var a = { 'class': (flows ? 'it ' : '') + (cls || '') };
+    if (flows) a['data-f'] = flows;
+    return el('g', a, parent);
+  }
+
+  /* a rounded rectangle drawn like a pen would: slightly bowed sides, corners that do not quite meet */
+  function rr(x, y, w, h, r, a) {
+    r = Math.min(r, w / 2, h / 2);
+    function p(px, py) { return n(px + jit(a * 0.5)) + ' ' + n(py + jit(a * 0.5)); }
+    function side(ax, ay, bx, by) {
+      var horiz = ay === by;
+      var cx = (ax + bx) / 2 + (horiz ? 0 : jit(a));
+      var cy = (ay + by) / 2 + (horiz ? jit(a) : 0);
+      return 'Q ' + n(cx) + ' ' + n(cy) + ' ' + p(bx, by);
+    }
+    function corner(cx, cy, ex, ey) { return 'Q ' + n(cx) + ' ' + n(cy) + ' ' + p(ex, ey); }
+    return 'M ' + p(x + r, y) + ' ' +
+      side(x + r, y, x + w - r, y) + ' ' + corner(x + w, y, x + w, y + r) + ' ' +
+      side(x + w, y + r, x + w, y + h - r) + ' ' + corner(x + w, y + h, x + w - r, y + h) + ' ' +
+      side(x + w - r, y + h, x + r, y + h) + ' ' + corner(x, y + h, x, y + h - r) + ' ' +
+      side(x, y + h - r, x, y + r) + ' ' + corner(x, y, x + r, y);
+  }
+
+  function box(x, y, w, h, o) {
+    o = o || {};
+    var g = grp(o.flows, null, null);
+    var r = o.r == null ? 12 : o.r;
+    if (o.fill) el('rect', { x: x, y: y, width: w, height: h, rx: r, 'class': o.fill }, g);
+    var amp = o.amp || Math.min(2.4, Math.max(1, Math.min(w, h) / 70));
+    el('path', { d: rr(x, y, w, h, r, amp), 'class': 'ln' + (o.fut ? ' fut' : '') }, g);
+    if (!o.fut) el('path', { d: rr(x, y, w, h, r, amp * 0.9), 'class': 'ln b' }, g);
+    return g;
+  }
+
+  function tx(x, y, lines, cls, parent, lh) {
+    var t = el('text', { x: x, y: y, 'class': 't ' + (cls || '') }, parent);
+    (Array.isArray(lines) ? lines : [lines]).forEach(function (l, i) {
+      var s = el('tspan', { x: x, dy: i ? (lh || 22) : 0 }, t);
+      s.textContent = l.replace(/ {2,}|^ /g, function (m) { return ' '.repeat(m.length); });
+    });
+    return t;
+  }
+
+  function head(x, y, dx, dy, parent, fut) {
+    var L = 12, ang = 0.52;
+    function rot(vx, vy, a) { return [vx * Math.cos(a) - vy * Math.sin(a), vx * Math.sin(a) + vy * Math.cos(a)]; }
+    var a = rot(-dx, -dy, ang), b = rot(-dx, -dy, -ang);
+    el('path', {
+      d: 'M ' + n(x + a[0] * L) + ' ' + n(y + a[1] * L) + ' L ' + n(x) + ' ' + n(y) + ' L ' + n(x + b[0] * L) + ' ' + n(y + b[1] * L),
+      'class': 'ln' + (fut ? ' fut' : ''), style: fut ? 'stroke-dasharray:none' : ''
+    }, parent);
+  }
+
+  /* an elbow arrow through the given points; both = arrowhead at each end */
+  function arrow(pts, o) {
+    o = o || {};
+    var g = grp(o.flows, 'arrow', null);
+    var d = 'M ' + n(pts[0][0] + jit(0.8)) + ' ' + n(pts[0][1] + jit(0.8));
+    for (var i = 1; i < pts.length; i++) {
+      var a = pts[i - 1], b = pts[i];
+      d += ' Q ' + n((a[0] + b[0]) / 2 + jit(1.4)) + ' ' + n((a[1] + b[1]) / 2 + jit(1.4)) + ' ' +
+           n(b[0] + jit(0.8)) + ' ' + n(b[1] + jit(0.8));
+    }
+    el('path', { d: d, 'class': 'ln' + (o.fut ? ' fut' : '') }, g);
+    var L = pts.length;
+    function unit(ax, ay, bx, by) { var dx = bx - ax, dy = by - ay, m = Math.hypot(dx, dy) || 1; return [dx / m, dy / m]; }
+    var u = unit(pts[L - 2][0], pts[L - 2][1], pts[L - 1][0], pts[L - 1][1]);
+    head(pts[L - 1][0], pts[L - 1][1], u[0], u[1], g, o.fut);
+    if (o.both) {
+      var v = unit(pts[1][0], pts[1][1], pts[0][0], pts[0][1]);
+      head(pts[0][0], pts[0][1], v[0], v[1], g, o.fut);
+    }
+    if (o.label) tx(o.label.x, o.label.y, o.label.t, 'lab' + (o.label.end ? ' end' : ''), g);
+    return g;
+  }
+
+  /* ---------------- zones ---------------- */
+  box(40, 30, 900, 250, { fill: 'z-client', r: 18, amp: 2.6 });
+  tx(70, 64, 'Client device', 'zone');
+  tx(275, 64, 'any browser, or the Android app', 'lab');
+
+  box(40, 360, 900, 370, { fill: 'z-server', r: 18, amp: 2.6 });
+  tx(70, 396, 'Server', 'zone');
+  tx(170, 396, 'Debian VM, server.py, Python standard library only', 'lab');
+
+  box(40, 810, 900, 250, { fill: 'z-data', r: 18, amp: 2.6 });
+  tx(70, 1043, 'Data on disk', 'zone');
+  tx(235, 1043, '/srv/stash-data (the STASH_DATA folder)', 'lab');
+
+  /* ---------------- client ---------------- */
+  var fe = box(70, 85, 420, 170, { fill: 'z-box', flows: ALL });
+  tx(90, 122, 'Front-end', 'h1', fe);
+  tx(222, 120, 'index.html, no build step', 'sm', fe);
+
+  var m1 = box(90, 150, 185, 40, { fill: 'z-mini', r: 8, amp: 1.2, flows: 'download manage' });
+  tx(182.5, 176, 'File browser', 'mid', m1);
+  var m2 = box(295, 150, 175, 40, { fill: 'z-mini', r: 8, amp: 1.2, flows: 'upload' });
+  tx(382.5, 176, 'Upload queue', 'mid', m2);
+  var m3 = box(90, 200, 185, 40, { fill: 'z-mini', r: 8, amp: 1.2, flows: 'download' });
+  tx(182.5, 226, 'Preview / viewer', 'mid', m3);
+  var m4 = box(295, 200, 175, 40, { fill: 'z-mini', r: 8, amp: 1.2, flows: 'login' });
+  tx(382.5, 226, 'Login screen', 'mid', m4);
+
+  var api = box(570, 100, 330, 140, { fill: 'z-box', flows: BK });
+  tx(590, 138, ['File transfer', 'API calls'], 'h2', api, 28);
+  tx(590, 198, 'fetch / XHR: JSON and raw file bodies', 'sm', api);
+  tx(590, 220, 'login: cookie (web) or API key (app)', 'sm', api);
+
+  arrow([[490, 170], [570, 170]], { both: true, flows: ALL });
+  arrow([[735, 240], [735, 420]], { both: true, flows: BK, label: { x: 715, y: 335, t: 'HTTP, port 8080', end: true } });
+
+  /* ---------------- server ---------------- */
+  var router = box(70, 420, 830, 84, { fill: 'z-box', flows: BK });
+  tx(90, 458, 'Router', 'h2', router);
+  tx(190, 450, 'The Handler class. Reads the URL, checks login, calls a service, sends JSON or the file.', 'sm', router);
+  tx(190, 474, 'Also serves index.html and adds the security headers.', 'sm', router);
+
+  var auth = box(70, 570, 250, 120, { fill: 'z-box', flows: BK });
+  tx(90, 602, 'Auth', 'h2', auth);
+  tx(90, 630, ['shared password + signed cookie', 'API key for the Android app', 'blocks 10 bad tries / 5 min'], 'sm', auth, 21);
+
+  var files = box(360, 570, 300, 120, { fill: 'z-box', flows: 'upload download manage backup' });
+  tx(380, 602, 'File service', 'h2', files);
+  tx(380, 630, ['upload: streamed, SHA-256 checked', 'download: Range + ETag', 'zip, rename, delete, hash lookup'], 'sm', files, 21);
+
+  var safe = box(700, 570, 200, 120, { fill: 'z-box', flows: 'upload download backup' });
+  tx(720, 602, 'Safety rules', 'h2', safe);
+  tx(720, 630, ['clean file names', 'random ids on disk', 'HTML shown as text'], 'sm', safe, 21);
+
+  arrow([[195, 504], [195, 570]], { both: true, flows: BK });
+  arrow([[510, 504], [510, 570]], { both: true, flows: 'upload download manage backup' });
+  arrow([[660, 630], [700, 630]], { both: true, flows: 'upload download backup' });
+
+  /* ---------------- data on disk ---------------- */
+  var key = box(70, 880, 160, 130, { fill: 'z-box', flows: ALL });
+  tx(88, 914, 'secret.key', 'h2', key);
+  tx(88, 942, ['random key that', 'signs the cookies'], 'sm', key, 21);
+
+  var db = box(250, 880, 200, 130, { fill: 'z-box', flows: 'upload download manage backup' });
+  tx(268, 914, 'stash.db', 'h2', db);
+  tx(268, 942, ['SQLite, one row per file', 'name, type, size,', 'SHA-256, dates'], 'sm', db, 21);
+
+  var tmp = box(470, 880, 140, 130, { fill: 'z-box', flows: 'upload backup' });
+  tx(488, 914, 'tmp/', 'h2', tmp);
+  tx(488, 942, ['uploads still', 'in progress'], 'sm', tmp, 21);
+
+  var blobs = box(650, 880, 250, 130, { fill: 'z-box', flows: 'upload download manage backup' });
+  tx(668, 912, 'blobs/', 'h2', blobs);
+  tx(668, 934, 'the real files, named by id', 'sm', blobs);
+  [[668, 944], [750, 949], [832, 944], [705, 976], [790, 978]].forEach(function (p) {
+    var f = box(p[0], p[1], 62, 26, { r: 6, amp: 0.8, fill: 'z-mini' });
+    tx(p[0] + 31, p[1] + 19, 'file', 'mid lab', f);
+  });
+
+  arrow([[150, 690], [150, 880]], { flows: ALL, label: { x: 162, y: 790, t: 'reads key' } });
+  arrow([[400, 690], [400, 880]], { both: true, flows: 'upload download manage backup', label: { x: 412, y: 790, t: 'metadata' } });
+  arrow([[540, 690], [540, 880]], { flows: 'upload backup', label: { x: 552, y: 790, t: 'partial file' } });
+  arrow([[630, 690], [630, 760], [740, 760], [740, 880]], { both: true, flows: 'upload download manage backup', label: { x: 752, y: 790, t: 'final file' } });
+  arrow([[610, 945], [650, 945]], { flows: 'upload backup' });
+
+  /* ---------------- right column: notes ---------------- */
+  var n1 = box(980, 30, 380, 250, { fill: 'z-box', r: 14 });
+  tx(1000, 66, 'Upload, step by step', 'h2', n1);
+  tx(1000, 100, [
+    '1  Client sends the raw file; its name',
+    '     (and optional X-Sha256) are headers',
+    '2  Router checks login/key, size, disk',
+    '3  File service streams it to tmp/ and',
+    '     computes SHA-256 (must match X-Sha256)',
+    '4  It moves to blobs/, a row goes in stash.db',
+    '5  Server replies with the file details'
+  ], '', n1, 23);
+
+  var f1 = box(980, 305, 380, 70, { fill: 'z-box', r: 14, flows: BK });
+  tx(1000, 335, 'Android app (v1)', 'h2', f1);
+  tx(1000, 359, 'WebView + photo backup, uses the API key', 'sm', f1);
+  arrow([[980, 340], [742, 340]], { both: true, flows: BK });
+
+  var n2 = box(980, 410, 380, 340, { fill: 'z-box', r: 14 });
+  tx(1000, 446, 'Rules to keep it tidy', 'h2', n2);
+  tx(1000, 480, [
+    '• Clients only talk to the API, never data/.',
+    '• Only the File service reads or writes',
+    '   blobs/ and stash.db.',
+    '• Every /api route checks the cookie or API',
+    '   key first (except login, logout, session).',
+    '   healthz sits outside /api.',
+    '• A new feature is a new route and a new',
+    '   service, not more code in Router.',
+    '• Never trust a file name. The disk only',
+    '   ever sees random ids.',
+    '• server.py is about 680 lines. Past 1,000,',
+    '   split it: router, auth, files, storage.'
+  ], '', n2, 22);
+
+  var f2 = box(980, 810, 380, 250, { fut: true, r: 14 });
+  tx(1000, 848, 'Planned growth (not built yet)', 'futt', f2);
+  [
+    ['Per-user accounts and keys', 'plugs into Auth (app key is shared today)'],
+    ['Folders and tags', 'plugs into stash.db + File service'],
+    ['Share links', 'plugs into Router + File service'],
+    ['Trash and old versions', 'plugs into File service + blobs/']
+  ].forEach(function (it, i) {
+    tx(1000, 888 + i * 44, it[0], '', f2);
+    tx(1000, 909 + i * 44, it[1], 'sm', f2);
+  });
+
+  /* ---------------- path highlighter ---------------- */
+  var texts = {
+    all: 'Showing everything. Pick a path to see which parts it uses.',
+    login: 'Login: Auth checks the password, then signs a cookie with secret.key and sends it back. The browser attaches that cookie to every later request. The Android app also fetches the API key (GET /api/app-key) once, for background backup.',
+    upload: 'Upload: the file goes browser, Router, File service. It is written to tmp/ while the SHA-256 is computed, moved into blobs/, and a row is added to stash.db.',
+    download: 'Download and preview: File service looks the file up in stash.db and streams it from blobs/. Range support lets video and audio seek.',
+    backup: 'Phone backup: the Android app hashes each new photo, asks GET /api/files/by-hash/<sha256> whether the server already has it, and if not uploads it with the API key and an X-Sha256 header. The File service re-checks that hash while streaming into tmp/, so a corrupted copy is never stored.',
+    manage: 'Rename and delete: a rename only changes stash.db. A delete removes the row and the file in blobs/.'
+  };
+  var chips = Array.prototype.slice.call(document.querySelectorAll('.chip'));
+  var note = document.getElementById('note');
+  function setFlow(f) {
+    Array.prototype.forEach.call(svg.querySelectorAll('.it'), function (e) {
+      var on = f === 'all' || e.getAttribute('data-f').split(' ').indexOf(f) >= 0;
+      e.classList.toggle('dim', !on);
+      e.classList.toggle('on', on && f !== 'all');
+    });
+    chips.forEach(function (c) { c.setAttribute('aria-pressed', String(c.getAttribute('data-flow') === f)); });
+    note.textContent = texts[f];
+  }
+  chips.forEach(function (c) { c.addEventListener('click', function () { setFlow(c.getAttribute('data-flow')); }); });
+  setFlow('all');
+})();
+</script>
+
+</body></html>
