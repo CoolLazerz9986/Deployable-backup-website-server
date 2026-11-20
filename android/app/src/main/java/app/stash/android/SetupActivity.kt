@@ -3,11 +3,10 @@ package app.stash.android
 import android.content.Intent
 import android.os.Bundle
 import android.text.InputType
+import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
-import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import java.net.ConnectException
@@ -25,39 +24,45 @@ class SetupActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         prefs = Prefs(this)
 
-        input = EditText(this).apply {
-            hint = "http://192.168.1.50:8080"
+        input = Ui.field(this, "http://192.168.1.50:8080").apply {
             setText(prefs.serverUrl)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
             setSingleLine(true)
             imeOptions = EditorInfo.IME_ACTION_GO
             setOnEditorActionListener { _, _, _ -> connect(); true }
         }
-        status = Ui.body(this)
-        connectBtn = Ui.button(this, "Connect") { connect() }
+        status = Ui.muted(this).apply { visibility = View.GONE }
+        connectBtn = Ui.button(this, "Connect", Ui.Kind.PRIMARY) { connect() }
 
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(56), dp(24), dp(24))
-            addView(Ui.title(this@SetupActivity, "Connect to your Stash"))
-            addView(Ui.body(this@SetupActivity, "Type the address of your Stash server. It's printed when the server starts, for example http://192.168.1.50:8080. Your phone has to be on the same network (or have a route to it)."))
-            addView(Ui.gap(this@SetupActivity, 12))
-            addView(input)
-            addView(status)
-            addView(Ui.gap(this@SetupActivity, 8))
-            addView(connectBtn)
-        }
-        setContentView(ScrollView(this).apply { addView(root) })
+        val intro = Ui.body(
+            this,
+            "Type the address of your Stash server. It's printed when the server starts, for example http://192.168.1.50:8080. " +
+                "Your phone has to be on the same network (or have a route to it).",
+        )
+        setContentView(
+            Ui.page(
+                this,
+                Ui.header(this, "Connect to your Stash", "Your own file vault"),
+                Ui.card(this, intro, input, status),
+                connectBtn,
+            )
+        )
+    }
+
+    private fun showStatus(text: String, error: Boolean = false) {
+        status.text = text
+        status.setTextColor(if (error) Ui.pal(this).danger else Ui.pal(this).muted)
+        status.visibility = if (text.isEmpty()) View.GONE else View.VISIBLE
     }
 
     private fun connect() {
         val base = normalizeServerUrl(input.text.toString())
         if (base == null) {
-            status.text = "That doesn't look like an address. Example: http://192.168.1.50:8080"
+            showStatus("That doesn't look like an address. Example: http://192.168.1.50:8080", error = true)
             return
         }
         connectBtn.isEnabled = false
-        status.text = "Checking $base …"
+        showStatus("Checking $base …")
         Thread {
             val error: String? = try {
                 StashApi.session(base)
@@ -68,7 +73,7 @@ class SetupActivity : ComponentActivity() {
             runOnUiThread {
                 if (isFinishing) return@runOnUiThread
                 connectBtn.isEnabled = true
-                if (error != null) status.text = error else save(base)
+                if (error != null) showStatus(error, error = true) else save(base)
             }
         }.start()
     }

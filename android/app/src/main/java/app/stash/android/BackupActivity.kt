@@ -5,8 +5,6 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Bundle
 import android.webkit.CookieManager
-import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
@@ -49,27 +47,42 @@ class BackupActivity : ComponentActivity() {
         }
         foldersButton = Ui.button(this, "") { chooseFolders() }
 
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(28), dp(20), dp(28))
-        }
-        root.addView(Ui.title(this, "Phone backup"))
-        root.addView(serverText)
-        root.addView(Ui.button(this, "Change server") { startActivity(Intent(this, SetupActivity::class.java)) })
-        root.addView(Ui.gap(this, 16))
-        root.addView(enableSwitch)
-        root.addView(Ui.toggle(this, "Wi-Fi only", prefs.wifiOnly) { prefs.wifiOnly = it; BackupScheduler.apply(this) })
-        root.addView(Ui.toggle(this, "Only while charging", prefs.chargingOnly) { prefs.chargingOnly = it; BackupScheduler.apply(this) })
-        root.addView(Ui.toggle(this, "Back up photos", prefs.includePhotos) { prefs.includePhotos = it })
-        root.addView(Ui.toggle(this, "Back up videos", prefs.includeVideos) { prefs.includeVideos = it })
-        root.addView(Ui.toggle(this, "Include files already on this phone", prefs.includeExisting) { prefs.includeExisting = it })
-        root.addView(foldersButton)
-        root.addView(Ui.gap(this, 16))
-        root.addView(statusText)
-        root.addView(Ui.button(this, "Back up now") { backupNow() })
-        root.addView(Ui.gap(this, 16))
-        root.addView(Ui.body(this, "Backup is one-way: nothing is ever deleted from your phone. Files the server already has (same content) are skipped. It runs about once an hour in the background. If it says the key was rejected, switch backup off and on again while logged in."))
-        setContentView(ScrollView(this).apply { addView(root) })
+        // Same layout idea as the website: grey page, one rounded card per group.
+        val serverCard = Ui.card(
+            this,
+            serverText,
+            Ui.button(this, "Change server") { startActivity(Intent(this, SetupActivity::class.java)) },
+            Ui.gap(this, 4),
+        )
+        val scheduleCard = Ui.card(
+            this,
+            enableSwitch,
+            Ui.toggle(this, "Wi-Fi only", prefs.wifiOnly) { prefs.wifiOnly = it; BackupScheduler.apply(this) },
+            Ui.toggle(this, "Only while charging", prefs.chargingOnly) { prefs.chargingOnly = it; BackupScheduler.apply(this) },
+        )
+        val contentCard = Ui.card(
+            this,
+            Ui.toggle(this, "Back up photos", prefs.includePhotos) { prefs.includePhotos = it },
+            Ui.toggle(this, "Back up videos", prefs.includeVideos) { prefs.includeVideos = it },
+            Ui.toggle(this, "Include files already on this phone", prefs.includeExisting) { prefs.includeExisting = it },
+            foldersButton,
+            Ui.gap(this, 4),
+        )
+        val statusCard = Ui.card(
+            this,
+            statusText,
+            Ui.button(this, "Back up now", Ui.Kind.PRIMARY) { backupNow() },
+            Ui.gap(this, 4),
+        )
+        val note = Ui.muted(
+            this,
+            "Backup is one-way: nothing is ever deleted from your phone. Files the server already has (same content) are skipped. " +
+                "It runs about once an hour in the background. If it says the key was rejected, switch backup off and on again while logged in.",
+        )
+
+        setContentView(
+            Ui.page(this, Ui.header(this, "Phone backup", "Photos and videos to your Stash"), serverCard, scheduleCard, contentCard, statusCard, note)
+        )
     }
 
     override fun onStart() {
@@ -165,7 +178,7 @@ class BackupActivity : ComponentActivity() {
                     return@runOnUiThread
                 }
                 val checked = BooleanArray(names.size) { names[it] in prefs.buckets }
-                AlertDialog.Builder(this)
+                val dialog = AlertDialog.Builder(this)
                     .setTitle("Folders to back up")
                     .setMultiChoiceItems(names.toTypedArray(), checked) { _, index, isChecked -> checked[index] = isChecked }
                     .setPositiveButton("Save") { _, _ ->
@@ -178,6 +191,7 @@ class BackupActivity : ComponentActivity() {
                     }
                     .setNegativeButton("Cancel", null)
                     .show()
+                Ui.styleDialog(dialog)
             }
         }.start()
     }
