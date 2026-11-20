@@ -1,0 +1,420 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Stash Android Architecture</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Patrick+Hand&display=swap" rel="stylesheet">
+<style>
+/* Layout: one wide hand-drawn canvas. Left column is the system (client, server, disk) top to bottom,
+   right column is notes and planned growth. Dashed accent = not built yet. */
+:root{
+  --bg:#fbfbfd; --ink:#1d1f2a; --muted:#596074; --line:#d5d9e4;
+  --accent:#4b4be0; --accent-ink:#ffffff;
+  --z-client:#e6eefc; --z-server:#e3f4ea; --z-data:#faefd9; --z-box:#ffffff; --z-mini:#f1f3f9;
+  --hand:"Patrick Hand","Segoe Print","Bradley Hand","Comic Sans MS",cursive;
+  --ui:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#13141a; --ink:#e8e9f1; --muted:#a2a7ba; --line:#2e3140;
+    --accent:#a1a1ff; --accent-ink:#13141a;
+    --z-client:#1b2640; --z-server:#16302a; --z-data:#33291a; --z-box:#1b1d26; --z-mini:#242738;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#13141a; --ink:#e8e9f1; --muted:#a2a7ba; --line:#2e3140;
+  --accent:#a1a1ff; --accent-ink:#13141a;
+  --z-client:#1b2640; --z-server:#16302a; --z-data:#33291a; --z-box:#1b1d26; --z-mini:#242738;
+  color-scheme:dark;
+}
+body{
+  background:var(--bg); color:var(--ink); font:15px/1.5 var(--ui);
+  padding-block:28px 48px;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px));
+}
+main{max-width:1400px;margin:0 auto}
+h1{font:400 clamp(32px,5vw,46px)/1.1 var(--hand);margin:0 0 6px;letter-spacing:.01em}
+.lede{margin:0 0 20px;max-width:64ch;color:var(--muted)}
+.bar{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:center;justify-content:space-between}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{font:500 14px var(--ui);border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:7px 14px;border-radius:999px;cursor:pointer}
+.chip:hover{border-color:var(--ink)}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.chip:focus-visible,.canvas:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--muted);align-items:center}
+.sw{display:inline-block;width:26px;height:14px;border:2px solid var(--ink);border-radius:5px;vertical-align:-3px;margin-right:6px}
+.sw.d{border-style:dashed;border-color:var(--accent)}
+.note{min-height:3em;margin:14px 0 12px;max-width:82ch}
+.canvas{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:var(--bg)}
+svg{display:block;width:100%;min-width:1100px;height:auto}
+
+/* diagram strokes and text */
+.ln{fill:none;stroke:var(--ink);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ln.b{stroke-width:1.1;opacity:.5}
+.ln.fut{stroke:var(--accent);stroke-dasharray:9 7}
+.z-client{fill:var(--z-client)} .z-server{fill:var(--z-server)} .z-data{fill:var(--z-data)}
+.z-box{fill:var(--z-box)} .z-mini{fill:var(--z-mini)}
+.t{font-family:var(--hand);fill:var(--ink);font-size:17px}
+.h1{font-size:27px} .h2{font-size:23px}
+.sm{font-size:16px;fill:var(--muted)}
+.lab{font-size:15px;fill:var(--muted)}
+.zone{font-size:19px;letter-spacing:.14em;text-transform:uppercase}
+.mid{text-anchor:middle} .end{text-anchor:end}
+.futt{fill:var(--accent);font-size:20px}
+.it{transition:opacity .2s}
+.it.dim{opacity:.14}
+.it.on .ln{stroke:var(--accent)}
+@media (prefers-reduced-motion:reduce){.it{transition:none}}
+</style>
+
+<main>
+  <header>
+    <h1>Stash Android app architecture</h1>
+    <p class="lede">Server on top, the phone in the middle, what the phone stores at the bottom. Everything the app says to the server goes through one of three doors: the WebView, Downloader or StashApi. The server side has its own diagram: Stash Architecture.html.</p>
+    <div class="bar">
+      <div class="chips" role="group" aria-label="Highlight a path through the app">
+        <button class="chip" type="button" data-flow="all" aria-pressed="true">Everything</button>
+        <button class="chip" type="button" data-flow="setup" aria-pressed="false">First launch</button>
+        <button class="chip" type="button" data-flow="browse" aria-pressed="false">Browse the website</button>
+        <button class="chip" type="button" data-flow="download" aria-pressed="false">Download</button>
+        <button class="chip" type="button" data-flow="enable" aria-pressed="false">Turn on backup</button>
+        <button class="chip" type="button" data-flow="backup" aria-pressed="false">Backup run</button>
+      </div>
+      <div class="legend"><span><i class="sw"></i>exists today</span><span><i class="sw d"></i>planned, not built</span></div>
+    </div>
+    <p class="note" id="note" aria-live="polite"></p>
+  </header>
+
+  <div class="canvas" tabindex="0" role="region" aria-label="Android app architecture diagram. Scrolls sideways on small screens.">
+    <svg id="dia" viewBox="0 0 1400 2140" role="img" aria-labelledby="dia-t dia-d">
+      <title id="dia-t">Stash Android app architecture</title>
+      <desc id="dia-d">The Android app reaches the Stash server through three doors: the WebView showing the website, a Downloader for files and zips, and StashApi for setup and backup. MainActivity hosts the WebView. BackupActivity and BackupScheduler start BackupWorker, which hashes new photos, checks the server and uploads them. Settings live in Prefs, finished files in BackupDb, and photos come from MediaStore.</desc>
+    </svg>
+  </div>
+</main>
+
+<script>
+(function () {
+  var NS = 'http://www.w3.org/2000/svg';
+  var svg = document.getElementById('dia');
+  var ALL = 'setup browse download enable backup';
+  var seed = 20261118;
+  function rnd() { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }
+  function jit(a) { return (rnd() - 0.5) * 2 * a; }
+  function n(v) { return v.toFixed(1); }
+
+  function el(tag, attrs, parent) {
+    var e = document.createElementNS(NS, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    (parent || svg).appendChild(e);
+    return e;
+  }
+  function grp(flows, cls, parent) {
+    var a = { 'class': (flows ? 'it ' : '') + (cls || '') };
+    if (flows) a['data-f'] = flows;
+    return el('g', a, parent);
+  }
+
+  /* a rounded rectangle drawn like a pen would: slightly bowed sides, corners that do not quite meet */
+  function rr(x, y, w, h, r, a) {
+    r = Math.min(r, w / 2, h / 2);
+    function p(px, py) { return n(px + jit(a * 0.5)) + ' ' + n(py + jit(a * 0.5)); }
+    function side(ax, ay, bx, by) {
+      var horiz = ay === by;
+      var cx = (ax + bx) / 2 + (horiz ? 0 : jit(a));
+      var cy = (ay + by) / 2 + (horiz ? jit(a) : 0);
+      return 'Q ' + n(cx) + ' ' + n(cy) + ' ' + p(bx, by);
+    }
+    function corner(cx, cy, ex, ey) { return 'Q ' + n(cx) + ' ' + n(cy) + ' ' + p(ex, ey); }
+    return 'M ' + p(x + r, y) + ' ' +
+      side(x + r, y, x + w - r, y) + ' ' + corner(x + w, y, x + w, y + r) + ' ' +
+      side(x + w, y + r, x + w, y + h - r) + ' ' + corner(x + w, y + h, x + w - r, y + h) + ' ' +
+      side(x + w - r, y + h, x + r, y + h) + ' ' + corner(x, y + h, x, y + h - r) + ' ' +
+      side(x, y + h - r, x, y + r) + ' ' + corner(x, y, x + r, y);
+  }
+
+  function box(x, y, w, h, o) {
+    o = o || {};
+    var g = grp(o.flows, null, null);
+    var r = o.r == null ? 12 : o.r;
+    if (o.fill) el('rect', { x: x, y: y, width: w, height: h, rx: r, 'class': o.fill }, g);
+    var amp = o.amp || Math.min(2.4, Math.max(1, Math.min(w, h) / 70));
+    el('path', { d: rr(x, y, w, h, r, amp), 'class': 'ln' + (o.fut ? ' fut' : '') }, g);
+    if (!o.fut) el('path', { d: rr(x, y, w, h, r, amp * 0.9), 'class': 'ln b' }, g);
+    return g;
+  }
+
+  function tx(x, y, lines, cls, parent, lh) {
+    var t = el('text', { x: x, y: y, 'class': 't ' + (cls || '') }, parent);
+    (Array.isArray(lines) ? lines : [lines]).forEach(function (l, i) {
+      var s = el('tspan', { x: x, dy: i ? (lh || 22) : 0 }, t);
+      s.textContent = l.replace(/ {2,}|^ /g, function (m) { return ' '.repeat(m.length); });
+    });
+    return t;
+  }
+
+  function head(x, y, dx, dy, parent, fut) {
+    var L = 12, ang = 0.52;
+    function rot(vx, vy, a) { return [vx * Math.cos(a) - vy * Math.sin(a), vx * Math.sin(a) + vy * Math.cos(a)]; }
+    var a = rot(-dx, -dy, ang), b = rot(-dx, -dy, -ang);
+    el('path', {
+      d: 'M ' + n(x + a[0] * L) + ' ' + n(y + a[1] * L) + ' L ' + n(x) + ' ' + n(y) + ' L ' + n(x + b[0] * L) + ' ' + n(y + b[1] * L),
+      'class': 'ln' + (fut ? ' fut' : ''), style: fut ? 'stroke-dasharray:none' : ''
+    }, parent);
+  }
+
+  /* an elbow arrow through the given points; both = arrowhead at each end */
+  function arrow(pts, o) {
+    o = o || {};
+    var g = grp(o.flows, 'arrow', null);
+    var d = 'M ' + n(pts[0][0] + jit(0.8)) + ' ' + n(pts[0][1] + jit(0.8));
+    for (var i = 1; i < pts.length; i++) {
+      var a = pts[i - 1], b = pts[i];
+      d += ' Q ' + n((a[0] + b[0]) / 2 + jit(1.4)) + ' ' + n((a[1] + b[1]) / 2 + jit(1.4)) + ' ' +
+           n(b[0] + jit(0.8)) + ' ' + n(b[1] + jit(0.8));
+    }
+    el('path', { d: d, 'class': 'ln' + (o.fut ? ' fut' : '') }, g);
+    var L = pts.length;
+    function unit(ax, ay, bx, by) { var dx = bx - ax, dy = by - ay, m = Math.hypot(dx, dy) || 1; return [dx / m, dy / m]; }
+    var u = unit(pts[L - 2][0], pts[L - 2][1], pts[L - 1][0], pts[L - 1][1]);
+    head(pts[L - 1][0], pts[L - 1][1], u[0], u[1], g, o.fut);
+    if (o.both) {
+      var v = unit(pts[1][0], pts[1][1], pts[0][0], pts[0][1]);
+      head(pts[0][0], pts[0][1], v[0], v[1], g, o.fut);
+    }
+    if (o.label) tx(o.label.x, o.label.y, o.label.t, 'lab' + (o.label.end ? ' end' : ''), g);
+    return g;
+  }
+
+  /* ================= SERVER (reference only; its own diagram is "Stash Architecture.html") ================= */
+  box(40, 30, 1320, 215, { fill: 'z-server', r: 18, amp: 2.6 });
+  tx(70, 64, 'Stash server', 'zone');
+  tx(270, 64, 'server.py. Every route is listed in API.md', 'lab');
+
+  var s1 = box(60, 90, 420, 135, { fill: 'z-box', flows: 'browse' });
+  tx(80, 122, 'The website', 'h2', s1);
+  tx(80, 148, ['GET /   (index.html)', 'and the /api calls that page makes:', 'list, upload, rename, delete'], 'sm', s1, 22);
+
+  var s2 = box(500, 90, 420, 135, { fill: 'z-box', flows: 'download' });
+  tx(520, 122, 'Downloads', 'h2', s2);
+  tx(520, 148, ['GET /api/files/<id>/download', 'POST /api/zip   (a POST, not a link)', 'both need the login cookie'], 'sm', s2, 22);
+
+  var s3 = box(940, 90, 400, 135, { fill: 'z-box', flows: 'setup enable backup' });
+  tx(960, 116, 'App API', 'h2', s3);
+  tx(960, 140, ['GET /api/session   is it Stash? api >= 2', 'GET /api/app-key   key for the session', 'GET /api/files/by-hash/<sha256>', 'POST /api/upload   raw body + X-Sha256'], 'sm', s3, 21);
+
+  /* three doors from the phone to the server */
+  arrow([[700, 225], [700, 370]], { both: true, flows: 'download', label: { x: 712, y: 284, t: 'door 2: Downloader, cookie' } });
+  arrow([[1140, 225], [1140, 370]], { both: true, flows: 'setup enable backup', label: { x: 1152, y: 284, t: 'door 3: StashApi, API key' } });
+
+  /* ================= PHONE ================= */
+  box(40, 305, 1320, 880, { fill: 'z-client', r: 18, amp: 2.6 });
+  tx(70, 340, 'Phone', 'zone');
+  tx(170, 340, 'Android 10+, Kotlin', 'lab');
+
+  /* ---- column 1: MainActivity (the website) ---- */
+  var ma = box(60, 370, 380, 575, { fill: 'z-box', flows: 'browse download enable' });
+  tx(80, 404, 'MainActivity', 'h2', ma);
+  tx(215, 402, 'launcher, hosts the site', 'lab', ma);
+
+  function mini(x, y, w, h, flows, title, sub) {
+    var m = box(x, y, w, h, { fill: 'z-mini', r: 8, amp: 1.2, flows: flows });
+    tx(x + 14, y + 25, title, '', m);
+    if (sub) tx(x + 14, y + 47, sub, 'sm', m);
+    return m;
+  }
+  mini(80, 430, 340, 62, 'browse download enable', 'WebView', 'loads <server>/ . login = the site cookie');
+  mini(80, 502, 340, 62, 'browse', 'WebChromeClient', 'file chooser: Upload opens system picker');
+  mini(80, 574, 340, 62, 'download', 'DownloadListener', 'file download links go to Downloader');
+  mini(80, 646, 340, 62, 'download enable', 'Bridge  window.StashApp', 'downloadZip(ids) . openSettings()');
+  mini(80, 718, 340, 62, 'browse', 'Error overlay', 'unreachable: Try again / Change server');
+  mini(80, 790, 340, 62, 'browse', 'Back button', 'closes an open <dialog>, else hides app');
+  mini(80, 862, 340, 62, 'setup browse', 'onResume', 'server address changed? reload');
+
+  /* door 1 (drawn after the box so it stays visible): server <-> WebView */
+  arrow([[400, 225], [400, 430]], { both: true, flows: 'browse', label: { x: 412, y: 284, t: 'door 1: WebView, cookie' } });
+
+  /* ---- column 2: Downloader, BackupActivity, BackupScheduler, SetupActivity ---- */
+  var dl = box(470, 370, 410, 160, { fill: 'z-box', flows: 'download' });
+  tx(490, 402, 'Downloader', 'h2', dl);
+  tx(490, 428, ['its own HTTP request (GET or POST)', 'repeats the WebView cookie', 'streams the body to a file'], 'sm', dl, 22);
+  mini(490, 490, 370, 30, 'download', '', '');
+  tx(675, 511, 'saved in Downloads/Stash/', 'mid', null);
+
+  var ba = box(470, 560, 410, 220, { fill: 'z-box', flows: 'enable backup' });
+  tx(490, 592, 'BackupActivity', 'h2', ba);
+  tx(490, 620, [
+    'settings: Wi-Fi only, charging only,',
+    'photos, videos, existing, folders',
+    'status text (listens to Prefs)',
+    'Back up now',
+    'Enable: permissions, session check,',
+    'key via WebView cookie, then schedule'
+  ], 'sm', ba, 23);
+
+  var bs = box(470, 810, 410, 110, { fill: 'z-box', flows: 'enable backup' });
+  tx(490, 842, 'BackupScheduler', 'h2', bs);
+  tx(490, 868, ['apply(): hourly WorkManager job,', 'constraints from settings. runNow()'], 'sm', bs, 22);
+
+  var su = box(470, 950, 410, 150, { fill: 'z-box', flows: 'setup' });
+  tx(490, 982, 'SetupActivity', 'h2', su);
+  tx(490, 1008, [
+    'asks for the server address',
+    'checks GET /api/session (is it Stash?)',
+    'saves Prefs.serverUrl, opens MainActivity',
+    'a new address clears key + history'
+  ], 'sm', su, 22);
+
+  /* ---- column 3: StashApi and BackupWorker ---- */
+  var sa = box(910, 370, 430, 270, { fill: 'z-box', flows: 'setup enable backup' });
+  tx(930, 402, 'StashApi', 'h2', sa);
+  tx(1030, 400, 'the one HTTP client for the API', 'lab', sa);
+  tx(930, 436, [
+    'session()        is it Stash? api version?',
+    'fetchAppKey()    needs the WebView cookie',
+    'exists(sha256)   already on the server?',
+    'upload(...)      streams body + X-Sha256',
+    'errors: ApiException(status),',
+    '   SourceException, UploadCancelled',
+    'blocking: never on the main thread'
+  ], 'sm', sa, 23);
+
+  var bw = box(910, 680, 430, 470, { fill: 'z-box', flows: 'backup' });
+  tx(930, 712, 'BackupWorker', 'h2', bw);
+  tx(1095, 710, 'one pass per run, safe to stop', 'lab', bw);
+  [
+    ['1  MediaSource.list', 'photos + videos by your settings'],
+    ['2  BackupDb.isDone?', 'same uri + size + date: skip'],
+    ['3  hash the file', 'SHA-256 + exact byte count'],
+    ['4  StashApi.exists', 'server has it: record it, skip'],
+    ['5  StashApi.upload', 'body + X-Sha256, server re-checks'],
+    ['6  BackupDb.mark', 'uploaded / present / skipped'],
+    ['7  Prefs.status + notification', 'progress; alert on key or disk error']
+  ].forEach(function (st, i) { mini(930, 735 + i * 58, 390, 50, 'backup', st[0], st[1]); });
+
+  /* ---- arrows inside the phone ---- */
+  /* MainActivity -> Downloader (links, zip) */
+  arrow([[420, 605], [460, 605], [460, 430], [470, 430]], { flows: 'download' });
+  arrow([[420, 662], [449, 662], [449, 450], [470, 450]], { flows: 'download' });
+  /* website settings button -> BackupActivity */
+  arrow([[420, 694], [470, 694]], { flows: 'enable' });
+  /* BackupActivity -> BackupScheduler -> BackupWorker */
+  arrow([[675, 780], [675, 810]], { flows: 'enable backup' });
+  arrow([[880, 865], [910, 865]], { flows: 'enable backup' });
+  /* screens -> StashApi */
+  arrow([[880, 600], [910, 600]], { flows: 'enable' });
+  arrow([[880, 1010], [895, 1010], [895, 625], [910, 625]], { flows: 'setup' });
+  /* worker -> StashApi */
+  arrow([[1130, 680], [1130, 640]], { flows: 'backup' });
+
+  /* ================= ON THE PHONE: state and Android services ================= */
+  box(40, 1220, 1320, 230, { fill: 'z-data', r: 18, amp: 2.6 });
+  tx(70, 1436, 'On the phone', 'zone');
+  tx(250, 1436, 'app storage and Android services', 'lab');
+
+  var d1 = box(60, 1275, 250, 130, { fill: 'z-box', flows: 'browse download enable' });
+  tx(78, 1308, 'CookieManager', 'h2', d1);
+  tx(78, 1334, ['the WebView\u2019s cookie jar', 'holds stash_session', 'read by Downloader, enable'], 'sm', d1, 21);
+
+  var d2 = box(330, 1275, 370, 130, { fill: 'z-box', flows: 'setup browse enable backup' });
+  tx(348, 1308, 'Prefs', 'h2', d2);
+  tx(420, 1306, 'SharedPreferences \u201Cstash\u201D', 'lab', d2);
+  tx(348, 1334, ['serverUrl, apiKey', 'backupEnabled, wifiOnly, chargingOnly', 'includePhotos/Videos/Existing', 'buckets, enabledSince, status, lastRun'], 'sm', d2, 19);
+
+  var d3 = box(730, 1275, 300, 130, { fill: 'z-box', flows: 'backup setup' });
+  tx(748, 1308, 'BackupDb', 'h2', d3);
+  tx(865, 1306, 'backup.db', 'lab', d3);
+  tx(748, 1334, ['SQLite: one row per finished file', 'key = content uri + size + date', 'uploaded, present or skipped'], 'sm', d3, 21);
+
+  var d4 = box(1060, 1275, 270, 130, { fill: 'z-box', flows: 'backup enable' });
+  tx(1078, 1308, 'MediaStore', 'h2', d4);
+  tx(1078, 1334, ['photo + video library', 'read via ContentResolver', 'needs media permission'], 'sm', d4, 21);
+
+  arrow([[150, 945], [150, 1275]], { both: true, flows: 'browse download enable', label: { x: 162, y: 1100, t: 'cookie' } });
+  arrow([[380, 1275], [380, 945]], { flows: 'setup browse', label: { x: 392, y: 1100, t: 'serverUrl' } });
+  arrow([[600, 1100], [600, 1275]], { flows: 'setup', label: { x: 612, y: 1160, t: 'saves serverUrl' } });
+  arrow([[910, 1125], [680, 1125], [680, 1275]], { flows: 'backup', label: { x: 770, y: 1117, t: 'status' } });
+  arrow([[1000, 1150], [1000, 1275]], { both: true, flows: 'backup', label: { x: 1012, y: 1225, t: 'done list' } });
+  arrow([[1220, 1150], [1220, 1275]], { flows: 'backup', label: { x: 1232, y: 1225, t: 'list + read bytes' } });
+
+  /* ================= NOTES ================= */
+  var n1 = box(40, 1490, 650, 340, { fill: 'z-box', r: 14 });
+  tx(60, 1526, 'Rules to keep it tidy', 'h2', n1);
+  tx(60, 1560, [
+    '\u2022 Every call to the server goes through StashApi, Downloader',
+    '   or the WebView. Never add a fourth way.',
+    '\u2022 No network on the main thread: use Thread { } or the worker.',
+    '\u2022 The server contract is API.md. Change it there first.',
+    '\u2022 The worker records each finished file straight away, so a',
+    '   stopped run just carries on. Keep it that way.',
+    '\u2022 The worker talks to the screen only through Prefs.status.',
+    '\u2022 Backup is one way. Never delete anything on the phone.',
+    '\u2022 New dependency? Needs a reason. Today: core, activity, work.',
+    '\u2022 Screens are built in code (Ui.kt). No XML layouts to sync.'
+  ], '', n1, 25);
+
+  var n2 = box(710, 1490, 650, 340, { fill: 'z-box', r: 14 });
+  tx(730, 1526, 'Where to change what', 'h2', n2);
+  tx(730, 1560, [
+    'New setting  \u2192  Prefs.kt, BackupActivity.kt, then',
+    '   BackupScheduler.kt or BackupWorker.kt',
+    'New server route  \u2192  API.md, server.py, StashApi.kt',
+    'What is backed up  \u2192  MediaSource.kt',
+    'Backup steps  \u2192  BackupWorker.kt (the 7 steps above)',
+    'Downloads and zips  \u2192  Downloader.kt, MainActivity.kt',
+    'Website hooks  \u2192  MainActivity.kt Bridge, and index.html',
+    '   (hidden button + zip hook, only if window.StashApp)',
+    'Permissions, service, cleartext http  \u2192',
+    '   AndroidManifest.xml, res/xml/network_security_config.xml',
+  ], '', n2, 25);
+
+  var n3 = box(40, 1860, 650, 250, { fill: 'z-box', r: 14 });
+  tx(60, 1896, 'Threads and lifetimes', 'h2', n3);
+  tx(60, 1930, [
+    '\u2022 Screens and the WebView run on the main thread. Calls from',
+    '   the page (StashApp.*) arrive on a WebView thread.',
+    '\u2022 Setup check, enabling backup and downloads each run in a',
+    '   plain Thread { } and report back with runOnUiThread.',
+    '\u2022 Backups run in WorkManager: hourly, plus Back up now. Only',
+    '   one run at a time. Android may stop it; the next run resumes.',
+    '\u2022 The progress notification is a dataSync foreground service.'
+  ], '', n3, 25);
+
+  var f2 = box(710, 1860, 650, 250, { fut: true, r: 14 });
+  tx(730, 1898, 'Not built yet', 'futt', f2);
+  [
+    ['Resumable uploads', 'needs a server route that accepts byte ranges'],
+    ['Share to Stash from other apps', 'an Android share-sheet entry'],
+    ['Folders and tags', 'needs the server to have folders first'],
+    ['Per-user keys', 'needs server accounts; today one shared key']
+  ].forEach(function (it, i) {
+    tx(730, 1938 + i * 44, it[0], '', f2);
+    tx(730, 1959 + i * 44, it[1], 'sm', f2);
+  });
+
+  /* ---------------- path highlighter ---------------- */
+  var texts = {
+    all: 'Showing everything. Pick a path to see which parts it uses.',
+    setup: 'First launch: MainActivity finds no server address and opens SetupActivity. It checks GET /api/session through StashApi (the answer must look like Stash), saves Prefs.serverUrl and reopens MainActivity. Changing the address later clears the old key, the backup history and the schedule.',
+    browse: 'Browsing: MainActivity loads <server>/ in the WebView. Login is the site\u2019s own cookie, kept by Android\u2019s CookieManager for 30 days. The Upload button opens the system file picker (WebChromeClient); the page then uploads by itself. If the server is unreachable an overlay offers Try again or Change server.',
+    download: 'Download: file links reach DownloadListener (a GET). Zips go through the StashApp.downloadZip bridge, because a zip is a POST the WebView cannot hand over. Downloader repeats the request with the WebView cookie and saves into Downloads/Stash.',
+    enable: 'Turning backup on: BackupActivity asks for photo permission, checks GET /api/session (api 2 or newer), sends the WebView login cookie to GET /api/app-key to get the API key, stores it in Prefs, then BackupScheduler sets the hourly job and runs one pass now.',
+    backup: 'A backup run: WorkManager starts BackupWorker. It lists photos and videos, skips what BackupDb says is done, hashes each remaining file, asks the server if it already has that hash, and uploads only if not. Each finished file is recorded at once, so an interrupted run resumes with the rest.'
+  };
+  var chips = Array.prototype.slice.call(document.querySelectorAll('.chip'));
+  var note = document.getElementById('note');
+  function setFlow(f) {
+    Array.prototype.forEach.call(svg.querySelectorAll('.it'), function (e) {
+      var on = f === 'all' || e.getAttribute('data-f').split(' ').indexOf(f) >= 0;
+      e.classList.toggle('dim', !on);
+      e.classList.toggle('on', on && f !== 'all');
+    });
+    chips.forEach(function (c) { c.setAttribute('aria-pressed', String(c.getAttribute('data-flow') === f)); });
+    note.textContent = texts[f];
+  }
+  chips.forEach(function (c) { c.addEventListener('click', function () { setFlow(c.getAttribute('data-flow')); }); });
+  setFlow('all');
+})();
+</script>
