@@ -194,6 +194,21 @@ dialog::backdrop{background:rgba(8,10,16,.6);backdrop-filter:blur(3px)}
   .brand span{display:none}
   .hactions{margin-left:auto}
 }
+
+/* press feedback: no blue browser tap box; instead the control sinks a little, like a real button */
+*{-webkit-tap-highlight-color:transparent}
+button,.card,.row,.drop,.chip{touch-action:manipulation}
+.btn,.chip,.card,.drop,.seg button,.navbtn{transition:transform .08s,filter .08s,background .15s,box-shadow .15s,border-color .15s}
+.btn:active:not(:disabled){transform:scale(.95);filter:brightness(.93)}
+.btn.primary:active,.btn.danger:active{transform:scale(.95);filter:brightness(.88)}
+.btn.ghost:active{background:color-mix(in srgb,var(--ink) 12%,transparent)}
+.chip:active{transform:scale(.95)}
+.card:active{transform:scale(.97);box-shadow:none}
+.row:active{background:color-mix(in srgb,var(--ink) 9%,transparent)}
+.seg button:active{background:var(--accent-soft)}
+.drop:active{transform:scale(.99);background:color-mix(in srgb,var(--accent) 14%,var(--panel))}
+.navbtn:active{transform:translateY(-50%) scale(.92)}
+@media (prefers-reduced-motion:reduce){.btn:active,.chip:active,.card:active,.drop:active,.navbtn:active{transform:none}.navbtn:active{transform:translateY(-50%)}}
 </style>
 </head>
 <body>
