@@ -34,6 +34,7 @@ Keep reports short: a few lines per section, no essays. Be honest about what is 
 - Android: no new dependency without a written reason.
 - Backup is one-way. Never delete anything on the phone.
 - Never remove or change existing API behaviour. Only add. Change `API.md` first, then the code.
+- Every code file you write or change starts with a commented-out line saying where it lives in the repo. See section 7.
 
 ## 5. Session limits and handoff
 
@@ -51,3 +52,36 @@ The AI cannot see its token limit, so it must not leave work only half delivered
 ## 6. Report layout
 
 Follow the report layout for your assigned role. The layouts live in [`REPORTS.md`](REPORTS.md).
+
+## 7. File location header
+
+Every code or config file you write or change must say where it belongs, so a file sent on its own can always be put back in the right place. The owner adds and pushes files by hand, so this matters.
+
+**The rule**
+
+- The file has a commented-out line at the top (or as near the top as the format allows) in this form, with the path written from the repo root, forward slashes, exact capitalisation:
+
+  `Path: android/app/src/main/java/app/stash/android/Ui.kt`
+
+- Put it in whatever comment syntax the file uses. It goes **after** anything that has to stay first, never before it.
+- **Write or change:** before you send a file, check its header exists and the path is correct.
+- **Move or rename:** update the header of the moved file in the same change. No stale paths.
+- **Delete:** say the deleted path in your report (under **Changed**). Check that no other file's header still names it.
+- **Folders** can't hold a comment. A folder's location is the path in the headers of the files inside it. Name a new, moved or deleted folder in your report.
+
+**Where it goes, by file type**
+
+| File | Header | Notes |
+|---|---|---|
+| `.py` | `# Path: server.py` | after the `#!` line, before the docstring |
+| `.kt`, `.kts` | `// Path: …` | before `package` |
+| `.html` | `<!-- Path: index.html -->` | after `<!doctype html>` |
+| `.xml` | `<!-- Path: … -->` | after the `<?xml …?>` line, which must stay first |
+| `.yml`, `.properties`, `.gitignore`, shell scripts | `# Path: …` | after a `#!` line if there is one |
+| `.bat` | `@rem Path: …` | |
+
+**Exceptions**
+
+- Markdown docs (`.md`, `.MD`) are exempt. The documentation map in `README.md` says where they are.
+- Files that can't hold a comment (`.json`, binaries such as `gradle-wrapper.jar`) get no header. Put their path in your report instead.
+- Files that already exist without a header get one **when you next change them**. Don't touch files you aren't changing just to add it.
