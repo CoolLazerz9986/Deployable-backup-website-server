@@ -72,7 +72,7 @@ svg{display:block;width:100%;min-width:1100px;height:auto}
 <main>
   <header>
     <h1>Stash Android app architecture</h1>
-    <p class="lede">Server on top, the phone in the middle, what the phone stores at the bottom. Everything the app says to the server goes through one of three doors: the WebView, Downloader or StashApi. The server side has its own diagram: Stash Architecture.html.</p>
+    <p class="lede">Server on top, the phone in the middle, what the phone stores at the bottom. Everything the app says to the server goes through one of three doors: the WebView, Downloader or StashApi. The server side has its own diagram: stash-architecture.html.</p>
     <div class="bar">
       <div class="chips" role="group" aria-label="Highlight a path through the app">
         <button class="chip" type="button" data-flow="all" aria-pressed="true">Everything</button>
@@ -188,7 +188,7 @@ svg{display:block;width:100%;min-width:1100px;height:auto}
     return g;
   }
 
-  /* ================= SERVER (reference only; its own diagram is "Stash Architecture.html") ================= */
+  /* ================= SERVER (reference only; its own diagram is "stash-architecture.html") ================= */
   box(40, 30, 1320, 215, { fill: 'z-server', r: 18, amp: 2.6 });
   tx(70, 64, 'Stash server', 'zone');
   tx(270, 64, 'server.py. Every route is listed in API.md', 'lab');
@@ -352,7 +352,8 @@ svg{display:block;width:100%;min-width:1100px;height:auto}
     '\u2022 The worker talks to the screen only through Prefs.status.',
     '\u2022 Backup is one way. Never delete anything on the phone.',
     '\u2022 New dependency? Needs a reason. Today: core, activity, work.',
-    '\u2022 Screens are built in code (Ui.kt). No XML layouts to sync.'
+    '\u2022 Screens are built in code with Ui.kt (website colours, follows light/dark).',
+    '   No XML layouts to sync.'
   ], '', n1, 25);
 
   var n2 = box(710, 1490, 650, 340, { fill: 'z-box', r: 14 });
@@ -368,6 +369,7 @@ svg{display:block;width:100%;min-width:1100px;height:auto}
     '   (hidden button + zip hook, only if window.StashApp)',
     'Permissions, service, cleartext http  \u2192',
     '   AndroidManifest.xml, res/xml/network_security_config.xml',
+    'Colours, cards, buttons, light/dark  \u2192  Ui.kt',
   ], '', n2, 25);
 
   var n3 = box(40, 1860, 650, 250, { fill: 'z-box', r: 14 });
