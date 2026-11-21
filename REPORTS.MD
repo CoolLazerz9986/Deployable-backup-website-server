@@ -37,7 +37,7 @@ Cover these three parts:
 
 - **Tested:** what you ran or checked
 - **Results:** what happened (pass / fail, numbers, output)
-- **Problems:** anything wrong, each tagged with a severity:
+- **Bugs:** anything wrong, each tagged with a severity:
   - **minor:** cosmetic or rare, nothing breaks
   - **normal:** a real bug with a workaround, or a clear annoyance
   - **critical:** data loss, security hole, crash, or the feature does not work
