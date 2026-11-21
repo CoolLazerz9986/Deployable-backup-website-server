@@ -22,6 +22,7 @@ Keep reports short: a few lines per section, no essays. Be honest about what is 
 - Add an entry to `CHANGELOG.md` for every change that engineers or testers report.
 - Keep `TASKS.md` current.
 - Scribes do not change code.
+- they mainly proofread documents and code, but they do not test them, thats for the tester, and testers should also do more than just testing like intentionally finding bugs
 
 ## 4. Hard constraints
 
