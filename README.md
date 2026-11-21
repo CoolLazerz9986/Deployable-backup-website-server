@@ -44,10 +44,8 @@ Needs Python 3.8 or newer. Nothing else to install.
 | `STASH_HOST` | `0.0.0.0` with a password, otherwise `127.0.0.1` | Address to listen on. |
 | `STASH_PORT` | `8080` | Port. |
 | `STASH_DATA` | `./data` | Where files and the database are kept. |
-| `STASH_MAX_MB` | `2048` | Largest single upload, in MB. See the note below. |
+| `STASH_MAX_MB` | `10` | Largest single upload, in MB. Phone files above it are not uploaded; the backup screen counts them as "too big" and tries them again after you raise the limit. |
 | `STASH_API_KEY` | *(generated)* | Key for the Android app / scripts (`Authorization: Bearer <key>`), at least 16 characters. If unset and a password is set, one is generated into `<data>/api.key` on first start. Delete that file and restart to rotate it. |
-
-> **Known mismatch:** the project verdict (`GUIDELINES.md` §7) is a 10 MB default, but `server.py` currently defaults to 2048 MB, which is what the table shows. Set `STASH_MAX_MB` yourself until the code is changed.
 
 **Safety default:** with no password set, the server only listens on `127.0.0.1`, so it can't be reached from other machines by accident. Set a password before exposing it to a network.
 
@@ -111,7 +109,7 @@ The `stash` user needs write access to `STASH_DATA`.
 - This speaks plain HTTP. To use it over the internet, put it behind a reverse proxy that adds HTTPS (Caddy or nginx); it honours `X-Forwarded-Proto` for secure cookies. Reverse proxies need their upload size limit raised to match `STASH_MAX_MB`.
 - Back up the whole `data/` folder to back up everything. It includes `secret.key` and `api.key`; they are in `.gitignore` and must stay out of git.
 - Uploaded files are never executed or rendered as web pages: HTML and scripts are shown as plain text, SVG runs sandboxed.
-- Login is a single shared password with a rate limit (10 wrong tries per 5 minutes per address). It is not per-user accounts. The rate limit is shared by wrong passwords and wrong API keys, per client address.
+- Login is a single shared password with a rate limit (10 wrong tries per 5 minutes per address). It is not per-user accounts. The rate limit is shared by wrong passwords and wrong API keys, per client address. `GET /api/session` is not a login attempt: a wrong key there is not counted.
 - Sessions are stateless cookies lasting 30 days. "Log out" removes the cookie from that browser only; to cut off every logged-in device, change `STASH_PASSWORD` and restart.
 - The API key is a second way in, as powerful as the password for everything under `/api`. Treat `api.key` like the password. Behind a reverse proxy, every client may look like the same address to the rate limiter.
 - Every route and header is documented in [`API.md`](API.md).
